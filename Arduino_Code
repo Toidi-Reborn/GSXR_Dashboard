@@ -1,0 +1,442 @@
+//  Huge Thanks to Github user o5i for his work on the Datalogger project.  A large majority of code is from the Datalogger project.
+
+
+	#include <TinyGPS++.h>
+
+static const int RXPin = 17, TXPin = 16;
+static const uint32_t GPSBaud = 9600;
+
+
+TinyGPSPlus gps;
+
+// For stats that happen every 5 seconds
+unsigned long last = 0UL;
+
+
+
+
+#define wb_analog 0                                                                                               // Analog Pin
+#define LED 13                                                                                                    // LED on Arduino
+
+// --------------------------------- K_Line OPTIONS ---------------------------------
+#define Serial1_baud 10400                                                                                        // Baud Rate
+#define TX 18                                                                                                    // TX Pin
+#define t_01 300                                                                                                 // delay before starting
+#define t_02  25                                                                                                  // pulse timing
+#define t_03  500                                                                                                 // timeout time
+#define t_04  50                                                                                                  // read write delay 45
+#define K_BUFFER_SIZE 300
+#define k_str_BUFFER_SIZE 20
+
+
+
+uint32_t time, tr_1, tr_2, tr_3;                                                                            // timer
+uint8_t k_outCntr, k_inCntr, k_inByte, k_chksm, k_size, k_mode;                                                   // Counters & Buffers
+boolean started_ ;                                                                                                // Start bit
+char k_str[k_str_BUFFER_SIZE], K_BUFFER[K_BUFFER_SIZE];
+
+byte K_START_COM[5] = {                                                                                           // Start Sequence
+  0x81, 0x12, 0xF1, 0x81, 0x05
+
+};
+
+byte K_READ_ALL_SENS[7] = {                                                                                       // Request Sensor Data
+  0x80, 0x12, 0xF1, 0x02, 0x21, 0x08, 0xAE
+//  80 12 F1 02 21 08 AE
+};
+
+
+// --------------------------------- Engine Values ---------------------------------
+uint16_t rpm1, iap;
+
+
+
+// --------------------------------- GPS ---------------------------------
+
+
+// --------------------------------- LOGING OPTIONS ---------------------------------
+
+
+// --------------------------------- Others ---------------------------------
+char asci_time[15];
+char asci_afr[6];
+uint16_t afr;                                                                                                     // Air fuel ratio
+
+
+
+// --------------------------------- SETUP ---------------------------------
+void setup() {
+  Serial.begin(9600);                                                   // Start Serial Comunication
+  Serial.println("Started");
+  delay(400);                                                           // catch Due reset problem
+  pinMode(LED, OUTPUT);                                                 // Set LED to Output
+  //////////////////////////////////// K_Line ////////////////////////////////////
+  pinMode(TX, OUTPUT);                                                  // Set TX to Output - Needed for K
+  //////////////////////////////////// GPS OPTIONS ////////////////////////////////////
+
+
+
+{
+  Serial.begin(9600);
+  Serial2.begin(GPSBaud);
+
+  Serial.println(TinyGPSPlus::libraryVersion());
+  Serial.println();
+}
+
+
+  //////////////////////////////////// LOGING OPTIONS ////////////////////////////////////
+
+
+}
+
+
+// --------------------------------- LOOP ---------------------------------
+void loop() {
+
+// Serial.println("Testing");
+
+//  Serial.println(gps.speed.mph());
+
+  kline();
+ // gpsData();  added gpsData() inside of kline() - works with gps callbacks
+ 
+
+}
+void kline(){
+
+
+  if (Serial.available()) {                                               // Reset K_ only for debugg
+    Serial.read();
+    started_ = false;
+  }
+
+  if (k_mode == 1) {                                                      // Run over Sentence Request
+    if (k_transmit(K_READ_ALL_SENS, 7)) {
+      toggleLed();                                                        // toggle LED
+
+      time = millis();
+      memset(asci_time, 0, sizeof(asci_time));
+      ultoa(time, asci_time, 10);
+      strcpy(asci_time + strlen(asci_time), ",");
+
+      memset(asci_afr, 0, sizeof(asci_afr));
+      itoa(afr, asci_afr, 10);
+      strcpy(asci_afr + strlen(asci_afr), ",");
+
+gpsData();   
+
+   Serial.println("this isisisisisisisi");
+   Serial.println(gps.speed.mph());
+            Serial.println(asci_time);
+            Serial.println(asci_afr);
+           Serial.println(K_BUFFER);
+   //        Serial.println("dsfdsfdsfsdgsdgfsd");
+           String dataString(K_BUFFER);
+  //         Serial.println(dataString);
+  //         Serial.println(sizeof(dataString));
+  //         Serial.println(rpm1);
+           
+
+         //   Serial.println();
+ //     Serial.println(F("RPM,TPS,ECT,IAT,IAP,Gear,Fuel 1,Fuel 2,Fuel 3,Fuel 4,IGN 1,IGN 2,IGN 3,IGN 4,STVP,Pair,Clutch,Map,Neutral,NMEA Type,Time,Status,Latitude,North South,Longitude,East West,Speed,Track Angle,Date,Magnetic Variation,,Checksum"));
+                       //    0,1,81,47,   0,  0,  0,   0,    0,     0,     0,     64,64,64,         64,   93,    0,   0,    0,  0 ,
+
+
+
+      //////////// Write DATA //////////////
+     
+      //////////// Print Header //////////////
+         
+    }
+  }
+  if (k_mode == 0) {                                                      // Start Sequence  
+    if (k_transmit(K_START_COM, 5)) {
+      toggleLed();                                                        // toggle LED
+      k_mode++;
+    }
+  }
+  afr = read_wideband();
+
+
+}
+
+
+  
+//----------------------GPS-----------------------
+void gpsData() {
+{
+  // Dispatch incoming characters
+  while (Serial2.available() > 0)
+  //Serial.println("s2");
+    gps.encode(Serial2.read());
+  //Serial.write(Serial2.read());
+  
+    if (millis() - last > 5000)
+  {
+   Serial.println();
+
+    if (gps.charsProcessed() < 10)
+      Serial.println(F("WARNING: No GPS data.  Check wiring."));
+
+    last = millis();
+    Serial.println();
+  }
+  
+}
+
+
+}
+
+//  End LOOP
+
+
+// --------------------------------- K_LINE ---------------------------------
+boolean k_transmit(byte * function, byte num) {
+  if (!started_) {
+    if (Serial1.available()) {              // Empty Buffer
+     
+      Serial1.read();
+    }
+   
+    Serial1.end();
+    //////////////////////////////////// PULSE 25ms ////////////////////////////////////
+    time = millis();                                                                // get Time
+    if (!tr_3) {                                                                    // reset Timer
+      tr_3 = millis();
+    }
+    if (tr_3 + t_01 > time) {                                                       // Switch t_01 High
+      digitalWrite (TX, HIGH);
+    }
+    if ((tr_3 + t_01 < time) && (tr_3 + t_01 + t_02 > time)) {                      // Switch t_02 LOW
+      digitalWrite (TX, LOW);
+    }
+    if ((tr_3 + t_01 + t_02 < time) && (tr_3 + t_01 + t_02 + t_02 > time)) {        // Switch t_02 High
+      digitalWrite (TX, HIGH);
+    }
+
+    
+    //////////////////////////////////// START SERIAL COM ////////////////////////////////////
+    if (tr_3 + t_01 + t_02 + t_02 < time) {                                           // Start Serial Comunication
+      Serial1.begin(Serial1_baud);
+      memset(K_BUFFER, 0, sizeof(K_BUFFER));
+      k_mode = 0;
+      k_outCntr = 0;
+      k_inCntr = 0;
+      k_inByte = 0;
+      k_chksm = 0;
+      k_size = 0;
+      tr_1 = 0;
+      tr_3 = 0;
+      tr_2 = millis();
+      started_ = true;
+    }
+  }
+  
+  else {
+    //////////////////////////////////// WAIT BEFORE SENDING ////////////////////////////////////
+    time = millis();
+    if ((num > k_outCntr) && (time >= tr_1 + t_04)) {
+      //////////////////////////////////// SEND ////////////////////////////////////
+      Serial1.write(function[k_outCntr]);
+      k_outCntr++;
+//          tr_4 = micros();
+    }
+    //////////////////////////////////// RECIEVE ////////////////////////////////////
+    if (Serial1.available()) {
+      tr_2 = millis();                                                                                          // Reset Timeout Timer
+      k_inByte = Serial1.read();
+      k_inCntr++;
+
+      if (k_inCntr < k_outCntr) {
+        memset(K_BUFFER, 0, sizeof(K_BUFFER));
+      }
+
+      memset(k_str, 0, sizeof(k_str));
+      // RPM
+      if (k_inCntr == 25) {
+        rpm1 = 0;
+        rpm1 = k_inByte * 100;
+
+      }
+      if (k_inCntr == 26) {
+        itoa(k_inByte * 100 / 255 + rpm1, k_str, 10);
+        
+      }
+      // TPS
+      if (k_inCntr == 27) {
+        itoa((k_inByte - 55) * 100 / 169, k_str, 10);
+      }
+      // IAP
+      if (k_inCntr == 28) {
+        iap = 0;
+        iap = k_inByte;
+      }
+      // ECT   engine temp
+      if (k_inCntr == 29) {
+        itoa(k_inByte * 100 / 160 - 30, k_str, 10);
+      }
+      // IAT   intake temp
+      if (k_inCntr == 30) {
+        itoa(k_inByte * 100 / 160 - 30, k_str, 10);
+      }
+      // IAP
+      if (k_inCntr == 31) {
+        itoa(iap - k_inByte, k_str, 10);
+      }
+      // BAT VOLTAGE
+      if (k_inCntr == 32) {
+        itoa(k_inByte * 100 / 126, k_str, 10);
+      }
+      // GPS
+      if (k_inCntr == 34) {
+        itoa(k_inByte, k_str, 10);
+      }
+      // FUEL
+      if (k_inCntr == 40) {
+        itoa(k_inByte, k_str, 10);
+      }
+      if (k_inCntr == 42) {
+        itoa(k_inByte, k_str, 10);
+      }
+      if (k_inCntr == 44) {
+        itoa(k_inByte, k_str, 10);
+      }
+      if (k_inCntr == 46) {
+        itoa(k_inByte, k_str, 10);
+      }
+      // IGN
+      if (k_inCntr == 49) {
+        itoa(k_inByte, k_str, 10);
+      }
+      if (k_inCntr == 50) {
+        itoa(k_inByte, k_str, 10);
+      }
+      if (k_inCntr == 51) {
+        itoa(k_inByte, k_str, 10);
+      }
+      if (k_inCntr == 52) {
+        itoa(k_inByte, k_str, 10);
+      }
+      // STVA
+      if (k_inCntr == 54) {
+        itoa(k_inByte * 100 / 255, k_str, 10);
+      }
+      // PAIR
+      if (k_inCntr == 59) {
+        itoa(k_inByte, k_str, 10);
+      }
+      // CLUTCH - MS
+      if (k_inCntr == 60) {
+        if ((k_inByte == 0x05) || (k_inByte == 0x04)) {
+          strcpy(K_BUFFER + strlen(K_BUFFER), "0");
+          strcpy(K_BUFFER + strlen(K_BUFFER), ",");
+        }
+        else {
+          strcpy(K_BUFFER + strlen(K_BUFFER), "1");
+          strcpy(K_BUFFER + strlen(K_BUFFER), ",");
+        }
+        if ((k_inByte == 0x04) || (k_inByte == 0x14)) {
+          strcpy(K_BUFFER + strlen(K_BUFFER), "0");
+          strcpy(K_BUFFER + strlen(K_BUFFER), ",");
+        }
+        else {
+          strcpy(K_BUFFER + strlen(K_BUFFER), "1");
+          strcpy(K_BUFFER + strlen(K_BUFFER), ",");
+        }
+        memset(k_str, 0, sizeof(k_str));
+      }
+      // NEUTRAL - GEAR
+      if (k_inCntr == 61) {
+        if (k_inByte == 0x08) {
+          strcpy(K_BUFFER + strlen(K_BUFFER), "1");
+          strcpy(K_BUFFER + strlen(K_BUFFER), ",");
+        }
+        else {
+          strcpy(K_BUFFER + strlen(K_BUFFER), "0");
+          strcpy(K_BUFFER + strlen(K_BUFFER), ",");
+        }
+        memset(k_str, 0, sizeof(k_str));
+      }
+
+      if (strlen(k_str)) {
+        strcpy(K_BUFFER + strlen(K_BUFFER), k_str);
+        strcpy(K_BUFFER + strlen(K_BUFFER), ",");
+      }
+
+      //////////////////////////////////// ENCODE CHECKSUM ////////////////////////////////////
+      if (k_inCntr == 4 + k_outCntr) {
+        k_size = k_inByte;
+      }
+      if ((k_inCntr > k_outCntr) && (k_inCntr < k_size + 5 + k_outCntr)) {
+        k_chksm = k_chksm + k_inByte;
+      }
+      //////////////////////////////////// RETURN TRUE + RESET IF CHECKSUM OK////////////////////////////////////
+      if (k_inCntr == k_size + 5 + k_outCntr) {
+        if (k_chksm == k_inByte) {
+          k_outCntr = 0;
+          k_inCntr = 0;
+          k_inByte = 0;
+          k_chksm = 0;
+          k_size = 0;
+          tr_2 = millis();                                                                                       // Reset Timeouttimer
+          tr_1 = millis();                                                                                       // Start Waiting before Writing
+          return 1;
+        }
+      }
+    }
+    //////////////////////////////////// Timeout ////////////////////////////////////
+    else {
+      time = millis();
+       if (time > tr_2 + t_03) {
+    //      Serial.println("Timeout");
+          started_ = false;
+      }
+    }
+  }
+  return 0;
+}
+
+// --------------------------------- GPS ---------------------------------
+
+
+
+
+
+// --------------------------------- ASCI NUM TO HEX ---------------------------------
+byte asci_to_byte (byte asci)
+{
+  /////////////////////////////// HEX RANGE - ABCDEF  ///////////////////////////////
+  if ((asci > 64) && (asci < 71)) {
+    asci = asci - 55;
+    return  asci;
+  }
+  /////////////////////////////// DEC RANGE - 0123456789  ///////////////////////////////
+  else if ((asci > 48) && (asci < 58)) {
+    asci = asci - 48;
+    return  asci;
+  }
+  else return 0;
+}
+
+
+
+
+
+// --------------------------------- Wideband ---------------------------------
+int read_wideband() {
+  uint16_t  afr = map(analogRead(wb_analog), 0, 1023, 1000, 1998);
+  return afr;
+}
+
+// --------------------------------- Create Filename ---------------------------------
+
+
+
+// --------------------------------- LED ---------------------------------
+void toggleLed() {
+  digitalWrite (LED, !digitalRead(LED));
+}
+
+
+	
