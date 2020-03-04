@@ -8,3 +8,8 @@ The idea behind this is to create a custom design and front end display for a Su
 
 8/25/19 UPDATE: Unfortunately, one of the seals in front fork has worn out causing it to leak fork oil.  This is normal given the age and millage of my motorcycle.  If you are unfamiliar with this part, it is basically what connects the front tire to the rest of the bike. The fork is responsible for the bikes suspension and is very unsafe to drive while the fork is leaking.  In order to fix this, the bike had to been taken apart in such a way that I will not be able to use it for this project at this time so there will be a longer delay on progress here.
 
+
+####
+The other side of this project (the actual display) is loaded into its own actual (first proper one) git repository
+Eventually, the back end part (this) will be merged with the front side gui
+###
